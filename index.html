@@ -140,6 +140,21 @@ body.bg-gsistd .lay-city, body.bg-gsipale .lay-city{display:none}
 #attr{position:absolute;right:6px;bottom:4px;font-size:10.5px;background:rgba(255,255,255,.85);padding:1px 6px;border-radius:4px;display:none}
 #attr a{color:#2b6cb0}
 #tilemsg{position:absolute;left:10px;top:52px;max-width:300px;background:#fff7e6;border:1px solid #f0c36d;border-radius:8px;padding:7px 9px;font-size:12px;display:none;line-height:1.5}
+
+#gpswrap{position:absolute;right:10px;bottom:28px;display:flex;flex-direction:column;align-items:flex-end;gap:4px;z-index:4}
+#gpsfab{display:flex;align-items:center;gap:6px;font-family:inherit;font-size:15px;font-weight:700;color:#fff;background:#1a73e8;
+  border:none;border-radius:999px;padding:11px 18px;box-shadow:0 3px 10px rgba(0,0,0,.28);cursor:pointer}
+#gpsfab .ic{font-size:18px}
+#gpsfab:active{transform:scale(.97)}
+#gpsfab.busy{background:#5f6b7a}
+#gpsfab.on{background:#0b57d0}
+#gpsstop{display:none;position:absolute;right:-6px;top:-8px;width:24px;height:24px;border-radius:50%;border:2px solid #fff;background:#444;color:#fff;font-size:12px;line-height:1;cursor:pointer;padding:0}
+#gpswrap.on #gpsstop{display:block}
+#gpsstat{font-size:11.5px;background:rgba(255,255,255,.95);border-radius:6px;padding:2px 8px;color:#0b57d0;font-weight:600;display:none}
+#gpswrap.on #gpsstat{display:block}
+#manualbtn{font-family:inherit;font-size:11.5px;background:rgba(255,255,255,.95);border:1px solid var(--line);border-radius:6px;padding:3px 8px;cursor:pointer;color:#333}
+#locbox{right:10px;top:auto;bottom:90px}
+#attr{bottom:4px}
 #tip{position:absolute;pointer-events:none;background:#fff;border:1px solid var(--line);border-radius:6px;
   padding:6px 8px;font-size:12px;box-shadow:0 2px 8px rgba(0,0,0,.12);display:none;max-width:260px}
 aside{width:380px;border-left:1px solid var(--line);background:#fff;overflow:auto;padding:14px 14px 24px}
@@ -181,10 +196,11 @@ details summary{cursor:pointer;color:var(--muted)}
 <main>
   <div id="mapwrap">
     <svg id="map"></svg>
-    <div id="zoombtns"><button id="zin" title="拡大">＋</button><button id="zout" title="縮小">－</button><button id="zall" title="全体">⤢</button><button id="locbtn" title="現在地">📍</button><button id="measbtn" title="距離を測る">📏</button></div>
+    <div id="zoombtns"><button id="zin" title="拡大">＋</button><button id="zout" title="縮小">－</button><button id="zall" title="全体">⤢</button><button id="measbtn" title="距離を測る">📏</button></div>
     <div id="measbox"></div>
     <div id="bgctl">背景 <select id="bgsel"><option value="std">標準</option><option value="road">道路・鉄道・都市</option><option value="white">白地図</option><option value="dark">夜間（暗い）</option><option value="photo">航空写真（地理院）</option><option value="gsistd">地理院地図（標準）</option><option value="gsipale">地理院地図（淡色）</option></select></div>
     <div id="tilemsg"></div>
+    <div id="gpswrap"><button id="gpsfab"><span class="ic">📍</span><span class="tx">現在地を表示</span></button><button id="gpsstop" title="現在地の表示をやめる">✕</button><div id="gpsstat"></div><button id="manualbtn">地点を手入力・地図で指定</button></div>
     <div id="attr">出典：<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">国土地理院（地理院タイル）</a></div>
     <div id="pickhint">地図をタップして地点を指定</div>
     <div id="locbox"></div>
@@ -480,7 +496,7 @@ function openBox(msg){
   inp.onkeydown=e=>{ if(e.key==='Enter') document.getElementById('locgo').click(); };
   document.getElementById('locpick').onclick=()=>{ box.style.display='none'; picking=true; document.getElementById('pickhint').style.display='block'; };
   document.getElementById('loccl').onclick=()=>{ box.style.display='none'; };
-  const clr=document.getElementById('locclr'); if(clr) clr.onclick=()=>{ me=null; document.getElementById('locbtn').classList.remove('gps'); if(watchId!=null){try{navigator.geolocation.clearWatch(watchId);}catch(e){} watchId=null;} drawMe(); panel(); box.style.display='none'; };
+  const clr=document.getElementById('locclr'); if(clr) clr.onclick=()=>{ gpsStop(); if(watchId!=null){try{navigator.geolocation.clearWatch(watchId);}catch(e){} watchId=null;} drawMe(); panel(); box.style.display='none'; };
 }
 svg.on('click.pick',function(e){
   if(!picking) return;
@@ -489,19 +505,37 @@ svg.on('click.pick',function(e){
   const [lon,lat]=proj.invert(t.invert([mx,my]));
   setMe(lat,lon,null,'manual',false);
 });
-document.getElementById('locbtn').onclick=()=>{
-  if(box.style.display==='block'){ box.style.display='none'; return; }
+function gpsUI(state){ // idle / busy / on
+  const f=document.getElementById('gpsfab'), w=document.getElementById('gpswrap');
+  f.classList.toggle('busy',state==='busy'); f.classList.toggle('on',state==='on'); w.classList.toggle('on',state==='on');
+  f.querySelector('.ic').textContent = state==='busy' ? '⏳' : '📍';
+  f.querySelector('.tx').textContent = state==='busy' ? '現在地を取得中…' : state==='on' ? '現在地に戻る' : '現在地を表示';
+  gpsStat();
+}
+function gpsStat(){
+  const st=document.getElementById('gpsstat');
+  if(me && me.src==='gps') st.textContent='GPSで追従中'+(me.acc?`（誤差 約${Math.round(me.acc)}m）`:'');
+}
+function gpsStop(){
+  if(watchId!=null){ try{navigator.geolocation.clearWatch(watchId);}catch(e){} watchId=null; }
+  me=null; drawMe(); panel(); gpsUI('idle');
+}
+document.getElementById('manualbtn').onclick=()=>{ if(box.style.display==='block'){box.style.display='none';return;} openBox(''); };
+document.getElementById('gpsstop').onclick=e=>{ e.stopPropagation(); gpsStop(); };
+document.getElementById('gpsfab').onclick=()=>{
+  if(box.style.display==='block'){ box.style.display='none'; }
   if(me && me.src==='gps' && watchId!=null){ // 2回目以降：現在地へ戻る
     const r=0.08; zoomTo([{type:'Feature',geometry:{type:'MultiPoint',coordinates:[[me.lon-r,me.lat-r],[me.lon+r,me.lat+r]]}}],20); return; }
+  gpsUI('busy');
   let done=false;
-  const fail=(why)=>{ if(done) return; done=true; openBox(why); };
+  const fail=(why)=>{ if(done) return; done=true; gpsUI('idle'); openBox(why+'<br>スマホの設定で「位置情報」がオンになっているか、ブラウザの位置情報の許可を確認してください。代わりに下の方法でも地点を指定できます。'); };
   try{
     if(!navigator.geolocation) return fail('この表示環境では位置情報（GPS）が使えません。');
     const t=setTimeout(()=>fail('位置情報を取得できませんでした（この表示環境ではGPSが許可されていない可能性があります）。'),9000);
     navigator.geolocation.getCurrentPosition(pos=>{
       clearTimeout(t); if(done) return; done=true;
-      setMe(pos.coords.latitude,pos.coords.longitude,pos.coords.accuracy,'gps'); document.getElementById('locbtn').classList.add('gps');
-      try{ watchId=navigator.geolocation.watchPosition(p=>{ me={lat:p.coords.latitude,lon:p.coords.longitude,acc:p.coords.accuracy,src:'gps'}; drawMe(); panel(); },()=>{}, {enableHighAccuracy:true,maximumAge:10000}); }catch(e){}
+      setMe(pos.coords.latitude,pos.coords.longitude,pos.coords.accuracy,'gps'); gpsUI('on');
+      try{ watchId=navigator.geolocation.watchPosition(p=>{ me={lat:p.coords.latitude,lon:p.coords.longitude,acc:p.coords.accuracy,src:'gps'}; drawMe(); panel(); gpsStat(); },()=>{}, {enableHighAccuracy:true,maximumAge:10000}); }catch(e){}
     },err=>{ clearTimeout(t); fail('位置情報を取得できませんでした（'+(err.code===1?'許可されていません':'取得失敗')+'）。'); },
     {enableHighAccuracy:true,timeout:8000,maximumAge:30000});
   }catch(e){ fail('この表示環境では位置情報（GPS）が使えません。'); }
