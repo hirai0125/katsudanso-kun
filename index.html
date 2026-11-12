@@ -163,7 +163,9 @@ body.bg-gsistd .lay-city, body.bg-gsipale .lay-city{display:none}
 #gpsstat{font-size:11.5px;background:rgba(255,255,255,.95);border-radius:6px;padding:2px 8px;color:#0b57d0;font-weight:600;display:none}
 #gpswrap.on #gpsstat{display:block}
 #manualbtn{font-family:inherit;font-size:11.5px;background:rgba(255,255,255,.95);border:1px solid var(--line);border-radius:6px;padding:3px 8px;cursor:pointer;color:#333}
-#locbox{right:10px;top:auto;bottom:90px}
+#locbox{right:10px;top:auto;bottom:28px;z-index:7;max-width:calc(100% - 20px)}
+body.locbox-open #gpswrap{display:none}
+body.locbox-open #nearbar{display:none !important}
 #attr{bottom:4px}
 
 /* search */
@@ -251,7 +253,7 @@ b.innerHTML='表示中にエラーが起きました（この画面を撮ってC
 <header>
   <h1>活断層くん <span style="font-size:12px;font-weight:400;color:#6b6f76">全国 活断層マップ</span></h1>
   <div class="sub">都道府県・断層をタップすると、活断層と地震本部の最新評価（ランク・30年確率）を表示します。</div>
-  <div class="search"><input id="srch" type="search" placeholder="市町村名でジャンプ（例：河内長野市）" autocomplete="off" enterkeyhint="search"><button id="micbtn" title="音声で入力">🎤</button><button id="srchgo">移動</button><div id="sugg"></div></div>
+  <div class="search"><input id="srch" type="search" placeholder="市町村名でジャンプ（例：大阪市）" autocomplete="off" enterkeyhint="search"><button id="micbtn" title="音声で入力">🎤</button><button id="srchgo">移動</button><div id="sugg"></div></div>
   <div id="srchmsg"></div>
   <div class="chips" id="chips"></div>
 </header>
@@ -527,18 +529,20 @@ function nearList(lat=me.lat, lon=me.lon, n=6){
     return {it, d:per[0].d, r:per[0].r||it.rank, s:per[0].s};
   }).filter(Boolean).sort((a,b)=>a.d-b.d).slice(0,n);
 }
+// 1km未満はm単位（10m単位に丸め、50m未満は「50m未満」）
+const fmtKm = d => { const m=Math.round(d*100)*10; return m>=1000 ? d.toFixed(1)+'km' : (d*1000<50 ? '50m未満' : m+'m'); };
 let spNear=[], nearIds=new Set();
 function spBlock(){
   if(!sp) return '';
   const L=spNear;
   return `<div class="locblk" style="border-color:#e8590c;background:#fff6ef"><div class="t" style="color:#b83e00">🔍 ${sp.name}（${sp.pref}）の近くの活断層 <button id="spclr" style="float:right;font-size:11px;border:1px solid #ddd;background:#fff;border-radius:5px;cursor:pointer">✕ 消す</button></div>
     <div class="c">距離は${sp.name}の役所の位置から断層線までの直線距離です。</div>
-    ${L.map(n=>`<div class="near" data-id="${n.it.id}" style="border-top-color:#f1d2bd"><span class="rk sm ${rkey(n.r)}">${n.r}</span><span>${n.it.zone}${n.s?'<br><span style="color:#666">'+n.s+'</span>':''}</span><span class="d">${n.d<1?'1km未満':n.d.toFixed(1)+'km'}</span></div>`).join('')}</div>`;
+    ${L.map(n=>`<div class="near" data-id="${n.it.id}" style="border-top-color:#f1d2bd"><span class="rk sm ${rkey(n.r)}">${n.r}</span><span>${n.it.zone}${n.s?'<br><span style="color:#666">'+n.s+'</span>':''}</span><span class="d">${fmtKm(n.d)}</span></div>`).join('')}</div>`;
 }
 function nearBar(){
   const nb=document.getElementById('nearbar');
   if(!sp||!spNear.length){ nb.style.display='none'; return; }
-  nb.innerHTML=`<div class="nh">🔍 ${sp.name}の近くの活断層</div>`+spNear.slice(0,3).map(n=>`<div class="nr" data-id="${n.it.id}"><span class="rk sm ${rkey(n.r)}">${n.r}</span><span class="nn">${n.it.zone}</span><b>${n.d<1?'1km未満':n.d.toFixed(1)+'km'}</b></div>`).join('')+`<div class="nf">タップで説明　｜　全${spNear.length}件は${window.innerWidth<820?'地図の下':'右'}の一覧</div>`;
+  nb.innerHTML=`<div class="nh">🔍 ${sp.name}の近くの活断層</div>`+spNear.slice(0,3).map(n=>`<div class="nr" data-id="${n.it.id}"><span class="rk sm ${rkey(n.r)}">${n.r}</span><span class="nn">${n.it.zone}</span><b>${fmtKm(n.d)}</b></div>`).join('')+`<div class="nf">タップで説明　｜　全${spNear.length}件は${window.innerWidth<820?'地図の下':'右'}の一覧</div>`;
   nb.style.display='block';
   nb.querySelectorAll('.nr').forEach(r=>r.onclick=()=>focusItem(r.dataset.id,false));
 }
@@ -550,7 +554,7 @@ function locBlock(){
   return `<div class="locblk"><div class="t">📍 ${me.src==='gps'?'現在地':'指定した地点'}${pf?'（'+pf+'）':''}</div>
     <div class="c">北緯 ${me.lat.toFixed(5)}° 東経 ${me.lon.toFixed(5)}°${me.acc?` ｜ 精度 約${Math.round(me.acc)}m`:''}</div>
     <div style="font-size:12px;margin:6px 0 2px;font-weight:600">近い活断層（地震本部の評価対象・線までの距離）</div>
-    ${L.map(n=>`<div class="near" data-id="${n.it.id}"><span class="rk sm ${rkey(n.r)}">${n.r}</span><span>${n.it.zone}${n.s?'<br><span style="color:#666">'+n.s+'</span>':''}</span><span class="d">${n.d<1?'1km未満':n.d.toFixed(1)+'km'}</span></div>`).join('')}
+    ${L.map(n=>`<div class="near" data-id="${n.it.id}"><span class="rk sm ${rkey(n.r)}">${n.r}</span><span>${n.it.zone}${n.s?'<br><span style="color:#666">'+n.s+'</span>':''}</span><span class="d">${fmtKm(n.d)}</span></div>`).join('')}
     <div class="c" style="margin-top:4px">※距離は地図上の断層線（概略位置）までの直線距離です。</div></div>`;
 }
 function setMe(lat,lon,acc,src,zoomIt=true){
@@ -576,6 +580,8 @@ function parseCoord(t){
   return null;
 }
 const box=document.getElementById('locbox');
+function showBox(){ box.style.display='block'; document.body.classList.add('locbox-open'); }
+function hideBox(){ box.style.display='none'; document.body.classList.remove('locbox-open'); }
 function openBox(msg){
   box.innerHTML=`<b>地点を指定</b>
    ${msg?`<div class="err">${msg}</div>`:''}
@@ -583,15 +589,15 @@ function openBox(msg){
    <input id="locin" placeholder="例）34.4536, 135.5836" inputmode="decimal">
    <div class="row"><button class="pri" id="locgo">表示</button><button id="locpick">地図をタップして指定</button>
    ${me?'<button id="locclr">消す</button>':''}<button id="loccl">閉じる</button></div>`;
-  box.style.display='block';
+  showBox();
   const inp=document.getElementById('locin');
   document.getElementById('locgo').onclick=()=>{ const c=parseCoord(inp.value);
     if(!c||Math.abs(c[0])>90||Math.abs(c[1])>180){ openBox('座標を読み取れませんでした。「34.45, 135.58」の形で入力してください。'); return; }
-    box.style.display='none'; setMe(c[0],c[1],null,'manual'); };
+    hideBox(); setMe(c[0],c[1],null,'manual'); };
   inp.onkeydown=e=>{ if(e.key==='Enter') document.getElementById('locgo').click(); };
-  document.getElementById('locpick').onclick=()=>{ box.style.display='none'; picking=true; document.getElementById('pickhint').style.display='block'; };
-  document.getElementById('loccl').onclick=()=>{ box.style.display='none'; };
-  const clr=document.getElementById('locclr'); if(clr) clr.onclick=()=>{ gpsStop(); if(watchId!=null){try{navigator.geolocation.clearWatch(watchId);}catch(e){} watchId=null;} drawMe(); panel(); box.style.display='none'; };
+  document.getElementById('locpick').onclick=()=>{ hideBox(); picking=true; document.getElementById('pickhint').style.display='block'; };
+  document.getElementById('loccl').onclick=()=>{ hideBox(); };
+  const clr=document.getElementById('locclr'); if(clr) clr.onclick=()=>{ gpsStop(); if(watchId!=null){try{navigator.geolocation.clearWatch(watchId);}catch(e){} watchId=null;} drawMe(); panel(); hideBox(); };
 }
 svg.on('click.pick',function(e){
   if(!picking) return;
@@ -615,10 +621,10 @@ function gpsStop(){
   if(watchId!=null){ try{navigator.geolocation.clearWatch(watchId);}catch(e){} watchId=null; }
   me=null; drawMe(); panel(); gpsUI('idle');
 }
-document.getElementById('manualbtn').onclick=()=>{ if(box.style.display==='block'){box.style.display='none';return;} openBox(''); };
+document.getElementById('manualbtn').onclick=()=>{ if(box.style.display==='block'){hideBox();return;} openBox(''); };
 document.getElementById('gpsstop').onclick=e=>{ e.stopPropagation(); gpsStop(); };
 document.getElementById('gpsfab').onclick=()=>{
-  if(box.style.display==='block'){ box.style.display='none'; }
+  if(box.style.display==='block'){ hideBox(); }
   if(me && me.src==='gps' && watchId!=null){ // 2回目以降：現在地へ戻る
     const r=0.08; zoomTo([{type:'Feature',geometry:{type:'MultiPoint',coordinates:[[me.lon-r,me.lat-r],[me.lon+r,me.lat+r]]}}],20); return; }
   gpsUI('busy');
@@ -690,7 +696,7 @@ function upd(){ drawMeas(); measPanel(); }
 function measUI(){ const p=document.getElementById('measpill'); p.classList.toggle('on',measuring); p.textContent= measuring ? '📏 計測をやめる' : '📏 距離を測る'; }
 document.getElementById('measpill').onclick=()=>{
   measuring=!measuring; picking=false; document.getElementById('pickhint').style.display='none';
-  document.getElementById('locbox').style.display='none'; showInfo(null);
+  hideBox(); showInfo(null);
   measUI();
   if(measuring && mpts.length>1) mpts=[];
   upd();
@@ -869,7 +875,7 @@ micbtn.onclick=()=>{
   if(!SR){ smsg.textContent='このブラウザでは音声入力が使えません。スマホのキーボードのマイクボタンからも入力できます。'; smsg.style.display='block'; return; }
   try{
     rec=new SR(); rec.lang='ja-JP'; rec.interimResults=true; rec.maxAlternatives=3;
-    micbtn.classList.add('rec'); smsg.style.display='none'; srch.value=''; srch.placeholder='話してください（例：「かわちながのし」）';
+    micbtn.classList.add('rec'); smsg.style.display='none'; srch.value=''; srch.placeholder='話してください（例：「おおさかし」）';
     rec.onresult=e=>{
       const r=e.results[e.results.length-1];
       srch.value=r[0].transcript.replace(/[。、\s]/g,''); renderSugg();
@@ -879,7 +885,7 @@ micbtn.onclick=()=>{
       }
     };
     rec.onerror=e=>{ smsg.textContent = e.error==='not-allowed'||e.error==='service-not-allowed' ? 'マイクの使用が許可されていません（この画面では使えないことがあります。アプリ版では使えます）。' : '音声を聞き取れませんでした。もう一度🎤を押してください。'; smsg.style.display='block'; };
-    rec.onend=()=>{ micbtn.classList.remove('rec'); rec=null; srch.placeholder='市町村名でジャンプ（例：河内長野市）'; };
+    rec.onend=()=>{ micbtn.classList.remove('rec'); rec=null; srch.placeholder='市町村名でジャンプ（例：大阪市）'; };
     rec.start();
   }catch(e){ micbtn.classList.remove('rec'); rec=null; smsg.textContent='音声入力を開始できませんでした。'; smsg.style.display='block'; }
 };
